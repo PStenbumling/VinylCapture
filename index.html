@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vinyl Scanner MVP</title>
+  <style>
+    :root {
+      --bg: #f4f1e8;
+      --panel: #fffdf7;
+      --text: #1d1b18;
+      --muted: #5f5a52;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --danger: #b91c1c;
+      --ok: #166534;
+      --radius: 14px;
+      --shadow: 0 10px 30px rgba(20, 20, 20, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 20%, rgba(15, 118, 110, 0.14), transparent 42%),
+        radial-gradient(circle at 80% 30%, rgba(180, 83, 9, 0.12), transparent 40%),
+        var(--bg);
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 640px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(20, 20, 20, 0.08);
+      padding: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      line-height: 1.2;
+    }
+
+    .sub {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    video,
+    canvas {
+      width: 100%;
+      border-radius: 10px;
+      background: #000;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+    }
+
+    canvas {
+      display: none;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: #fff;
+      background: var(--accent);
+      min-width: 120px;
+    }
+
+    button:hover {
+      background: var(--accent-strong);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .ghost {
+      color: var(--text);
+      background: #ece8de;
+    }
+
+    .ghost:hover {
+      background: #ddd8cc;
+    }
+
+    .status {
+      margin-top: 8px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      min-height: 20px;
+    }
+
+    .status.error {
+      color: var(--danger);
+      font-weight: 600;
+    }
+
+    .status.success {
+      color: var(--ok);
+      font-weight: 600;
+    }
+
+    pre {
+      margin: 0;
+      background: #f7f3ea;
+      border: 1px solid #e8dfce;
+      border-radius: 10px;
+      padding: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 180px;
+      overflow: auto;
+      font-size: 0.92rem;
+    }
+
+    .result {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .result img {
+      width: 84px;
+      height: 84px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: #ddd;
+    }
+
+    .meta {
+      margin: 0;
+      line-height: 1.45;
+      font-size: 0.95rem;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    @media (max-width: 420px) {
+      button {
+        flex: 1 1 auto;
+      }
+
+      .result {
+        grid-template-columns: 1fr;
+      }
+
+      .result img {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1 / 1;
+      }
+    }
+
+    #loginOverlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 16px;
+    }
+
+    #loginOverlay.hidden {
+      display: none;
+    }
+
+    .login-box {
+      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(20,20,20,0.08);
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .login-box h2 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    .login-box p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .login-box label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .login-box input {
+      width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 1rem;
+      background: var(--bg);
+    }
+  </style>
+</head>
+<body>
+  <div id="loginOverlay">
+    <div class="login-box">
+      <h2>Discogs-installningar</h2>
+      <p>Sparas bara i webblasarens session, aldrig i kod eller fil.</p>
+      <div>
+        <label for="inputToken">Personal Access Token</label>
+        <input id="inputToken" type="password" autocomplete="off" placeholder="Klistra in token" />
+      </div>
+      <div>
+        <label for="inputUsername">Discogs-användarnamn</label>
+        <input id="inputUsername" type="text" autocomplete="off" placeholder="ditt_användarnamn" />
+      </div>
+      <div id="loginError" class="status error"></div>
+      <button id="loginBtn">Spara och fortsätt</button>
+    </div>
+  </div>
+
+  <main class="app">
+    <section class="panel">
+      <h1>Vinyl Scanner MVP</h1>
+      <p class="sub">Skanna etikett eller rygg, sok i Discogs, lagg till i samling.</p>
+      <p class="sub" id="secureHint"></p>
+    </section>
+
+    <section class="panel">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="controls">
+        <button id="captureBtn">Capture</button>
+        <button id="restartBtn" class="ghost">Restart camera</button>
+      </div>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Detected text</h2>
+      <p class="sub" id="queryInfo">Ingen OCR-korning an.</p>
+      <pre id="ocrText">-</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Discogs result</h2>
+      <div id="resultRoot" class="muted">Ingen traff an.</div>
+      <div class="controls" style="margin-top: 12px;">
+        <button id="addBtn" disabled>Add to collection</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script>
+    // Config section
+    const DISCOGS_TOKEN = "";
+    const DISCOGS_USERNAME = "";
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const captureBtn = document.getElementById("captureBtn");
+    const restartBtn = document.getElementById("restartBtn");
+    const addBtn = document.getElementById("addBtn");
+
+    const statusEl = document.getElementById("status");
+    const ocrTextEl = document.getElementById("ocrText");
+    const queryInfoEl = document.getElementById("queryInfo");
+    const resultRootEl = document.getElementById("resultRoot");
+    const secureHintEl = document.getElementById("secureHint");
+
+    let currentStream = null;
+    let currentRelease = null;
+
+    const addedReleaseIds = new Set(
+      JSON.parse(localStorage.getItem("addedReleaseIds") || "[]")
+    );
+
+    function setStatus(message, type = "") {
+      statusEl.textContent = message;
+      statusEl.className = "status" + (type ? " " + type : "");
+    }
+
+    function setButtonsBusy(isBusy) {
+      captureBtn.disabled = isBusy;
+      restartBtn.disabled = isBusy;
+      addBtn.disabled = isBusy || !currentRelease;
+    }
+
+    function saveAddedReleaseIds() {
+      localStorage.setItem("addedReleaseIds", JSON.stringify([...addedReleaseIds]));
+    }
+
+    function stopCamera() {
+      if (!currentStream) {
+        return;
+      }
+
+      for (const track of currentStream.getTracks()) {
+        track.stop();
+      }
+
+      currentStream = null;
+    }
+
+    async function startCamera() {
+      stopCamera();
+      setStatus("Startar kamera...");
+
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+
+        video.srcObject = currentStream;
+        await video.play();
+        setStatus("Kamera aktiv.", "success");
+      } catch (error) {
+        console.error(error);
+        setStatus("Kunde inte starta kameran. Kontrollera behorighet och URL.", "error");
+      }
+    }
+
+    function captureImage() {
+      if (!video.videoWidth || !video.videoHeight) {
+        throw new Error("Ingen videobild tillganglig.");
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error("Kunde inte skapa bild fran canvas."));
+            return;
+          }
+          resolve(blob);
+        }, "image/jpeg", 0.95);
+      });
+    }
+
+    async function runOCR(imageBlob) {
+      setStatus("Kor OCR...");
+
+      const result = await Tesseract.recognize(imageBlob, "eng", {
+        logger: (m) => {
+          if (m.status === "recognizing text") {
+            const percent = Math.round((m.progress || 0) * 100);
+            setStatus("OCR: " + percent + "%");
+          }
+        }
+      });
+
+      return result.data.text || "";
+    }
+
+    function getMeaningfulFirstLine(text) {
+      const lines = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .filter((line) => line.length > 3)
+        .filter((line) => /[A-Za-z0-9]/.test(line));
+
+      return lines[0] || "";
+    }
+
+    function extractBestCatalogCandidate(text) {
+      const patterns = [
+        /\b[A-Z]{1,6}\s?\d{2,6}(?:-\d{1,2})?\b/g,
+        /\b\d{3}\s?\d{3}-\d\b/g,
+        /\b[A-Z]{1,6}\s\d{2,4}\s\d{2,4}\b/g
+      ];
+
+      const matches = [];
+      const upper = text.toUpperCase();
+
+      for (const pattern of patterns) {
+        const found = upper.match(pattern) || [];
+        for (const candidate of found) {
+          matches.push(candidate.replace(/\s+/g, " ").trim());
+        }
+      }
+
+      const unique = [...new Set(matches)];
+
+      if (!unique.length) {
+        return "";
+      }
+
+      const scored = unique
+        .map((candidate) => {
+          let score = 0;
+          if (/[A-Z]/.test(candidate) && /\d/.test(candidate)) score += 3;
+          if (candidate.includes("-")) score += 1;
+          if (candidate.length >= 6 && candidate.length <= 12) score += 2;
+          return { candidate, score };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      return scored[0].candidate;
+    }
+
+    function buildSearchQuery(text) {
+      const catalog = extractBestCatalogCandidate(text);
+      if (catalog) {
+        return catalog;
+      }
+
+      return getMeaningfulFirstLine(text);
+    }
+
+    function renderResult(result) {
+      if (!result) {
+        resultRootEl.className = "muted";
+        resultRootEl.textContent = "Ingen traff.";
+        return;
+      }
+
+      const year = result.year || "Okant ar";
+      const title = result.title || "Okand titel";
+      const thumb = result.thumb || "";
+
+      resultRootEl.className = "result";
+      resultRootEl.innerHTML =
+        "<img alt=\"thumbnail\" src=\"" + thumb + "\" />" +
+        "<div>" +
+        "<p class=\"meta\"><strong>" + escapeHtml(title) + "</strong></p>" +
+        "<p class=\"meta\">Year: " + escapeHtml(String(year)) + "</p>" +
+        "<p class=\"meta muted\">Release ID: " + escapeHtml(String(result.id)) + "</p>" +
+        "</div>";
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    async function searchDiscogs(query) {
+      const token = getToken();
+      if (!token) throw new Error("Token saknas. Ladda om sidan och fyll i installningar.");
+
+      const url = "https://api.discogs.com/database/search?q=" +
+        encodeURIComponent(query) +
+        "&type=release&per_page=5";
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: "Discogs token=" + token
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        const msg = data && data.message ? data.message : "Discogs search misslyckades.";
+        throw new Error(msg);
+      }
+
+      return data.results && data.results.length ? data.results[0] : null;
+    }
+
+    async function addToCollection(releaseId) {
+      const token = getToken();
+      const username = getUsername();
+      if (!token) throw new Error("Token saknas. Ladda om sidan och fyll i installningar.");
+      if (!username) throw new Error("Användarnamn saknas. Ladda om sidan och fyll i installningar.");
+
+      const url =
+        "https://api.discogs.com/users/" +
+        encodeURIComponent(username) +
+        "/collection/folders/1/releases/" +
+        encodeURIComponent(String(releaseId));
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: "Discogs token=" + token
+        }
+      });
+
+      if (response.status === 201 || response.status === 204) {
+        return;
+      }
+
+      let message = "Kunde inte lagga till release i samlingen.";
+      try {
+        const data = await response.json();
+        if (data && data.message) {
+          message = data.message;
+        }
+      } catch (error) {
+        console.error(error);
+      }
+
+      throw new Error(message);
+    }
+
+    captureBtn.addEventListener("click", async () => {
+      setButtonsBusy(true);
+      currentRelease = null;
+      addBtn.disabled = true;
+
+      try {
+        const imageBlob = await captureImage();
+        const text = (await runOCR(imageBlob)).trim();
+
+        ocrTextEl.textContent = text || "Ingen text hittades.";
+
+        const query = buildSearchQuery(text);
+        if (!query) {
+          queryInfoEl.textContent = "Hittade ingen vettig sokfras i OCR-texten.";
+          renderResult(null);
+          setStatus("OCR klar men ingen sokfras hittades.", "error");
+          return;
+        }
+
+        queryInfoEl.textContent = "Sokfras: " + query;
+        setStatus("Soker i Discogs...");
+
+        const result = await searchDiscogs(query);
+        currentRelease = result;
+        renderResult(result);
+
+        if (!result) {
+          setStatus("Ingen Discogs-traff.", "error");
+          return;
+        }
+
+        if (addedReleaseIds.has(result.id)) {
+          setStatus("Release finns redan i lokal historik.", "success");
+        } else {
+          setStatus("Discogs-traff hittad.", "success");
+        }
+      } catch (error) {
+        console.error(error);
+        renderResult(null);
+        setStatus(error.message || "Ett fel uppstod.", "error");
+      } finally {
+        setButtonsBusy(false);
+      }
+    });
+
+    addBtn.addEventListener("click", async () => {
+      if (!currentRelease) {
+        return;
+      }
+
+      if (addedReleaseIds.has(currentRelease.id)) {
+        setStatus("Release verkar redan lagd lokalt. Hoppar over dublett.", "success");
+        return;
+      }
+
+      setButtonsBusy(true);
+      try {
+        setStatus("Lagger till i samling...");
+        await addToCollection(currentRelease.id);
+        addedReleaseIds.add(currentRelease.id);
+        saveAddedReleaseIds();
+        setStatus("Tillagd i Discogs collection.", "success");
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Kunde inte lagga till i samling.", "error");
+      } finally {
+        setButtonsBusy(false);
+      }
+    });
+
+    restartBtn.addEventListener("click", async () => {
+      setButtonsBusy(true);
+      try {
+        await startCamera();
+      } finally {
+        setButtonsBusy(false);
+      }
+    });
+
+    function updateSecureContextHint() {
+      if (window.isSecureContext) {
+        secureHintEl.textContent = "Kamerastod aktivt: localhost eller HTTPS.";
+      } else {
+        secureHintEl.textContent = "Varning: kameran fungerar ofta inte utan localhost eller HTTPS.";
+      }
+    }
+
+    // Inloggningslogik
+    const loginOverlay = document.getElementById("loginOverlay");
+    const loginBtn = document.getElementById("loginBtn");
+    const inputToken = document.getElementById("inputToken");
+    const inputUsername = document.getElementById("inputUsername");
+    const loginError = document.getElementById("loginError");
+
+    loginBtn.addEventListener("click", () => {
+      const token = inputToken.value.trim();
+      const username = inputUsername.value.trim();
+      if (!token || !username) {
+        loginError.textContent = "Fyll i bade token och användarnamn.";
+        return;
+      }
+      sessionStorage.setItem("dg_token", token);
+      sessionStorage.setItem("dg_username", username);
+      loginOverlay.classList.add("hidden");
+      startCamera();
+    });
+
+    (async function init() {
+      updateSecureContextHint();
+      const savedToken = sessionStorage.getItem("dg_token");
+      const savedUsername = sessionStorage.getItem("dg_username");
+      if (savedToken && savedUsername) {
+        loginOverlay.classList.add("hidden");
+      } else {
+        return; // vänta på inloggning via loginBtn
+      }
+
+      if (!window.isSecureContext) {
+        setStatus("Kamera kraver HTTPS eller localhost. Oppna sidan via https-lank.", "error");
+        captureBtn.disabled = true;
+        restartBtn.disabled = true;
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("Din webblasare saknar getUserMedia-stod.", "error");
+        captureBtn.disabled = true;
+        restartBtn.disabled = true;
+        return;
+      }
+
+      await startCamera();
+    })();
+  </script>
+</body>
+</html>
