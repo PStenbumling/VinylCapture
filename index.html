@@ -280,10 +280,12 @@
       <p>Sparas bara i webblasarens session, aldrig i kod eller fil.</p>
       <div>
         <label for="inputToken">Personal Access Token</label>
+        <p style="margin: 4px 0 8px; font-size: 0.85rem; color: var(--muted);">Fatt token från <a href="https://www.discogs.com/settings/developers" target="_blank" style="color: var(--accent); text-decoration: none; font-weight: 600;">Discogs Developer Settings</a></p>
         <input id="inputToken" type="password" autocomplete="off" placeholder="Klistra in token" />
       </div>
       <div>
         <label for="inputUsername">Discogs-användarnamn</label>
+        <p style="margin: 4px 0 8px; font-size: 0.85rem; color: var(--muted);">Ditt Discogs användarnamn (samma som du loggar in med)</p>
         <input id="inputUsername" type="text" autocomplete="off" placeholder="ditt_användarnamn" />
       </div>
       <div id="loginError" class="status error"></div>
@@ -633,15 +635,16 @@
       const title = result.title || "Okand titel";
       const catno = result.catno || "Okant";
       const thumb = result.thumb || "";
+      const discogsUrl = "https://www.discogs.com/release/" + String(result.id);
 
       resultRootEl.className = "result";
       resultRootEl.innerHTML =
         "<img alt=\"thumbnail\" src=\"" + thumb + "\" />" +
         "<div>" +
-        "<p class=\"meta\"><strong>" + escapeHtml(title) + "</strong></p>" +
+        "<p class=\"meta\"><strong><a href=\"" + discogsUrl + "\" target=\"_blank\" style=\"color: var(--accent); text-decoration: none;\">" + escapeHtml(title) + "</a></strong></p>" +
         "<p class=\"meta\">Year: " + escapeHtml(String(year)) + "</p>" +
         "<p class=\"meta\">Catno: " + escapeHtml(String(catno)) + "</p>" +
-        "<p class=\"meta muted\">Release ID: " + escapeHtml(String(result.id)) + "</p>" +
+        "<p class=\"meta muted\"><a href=\"" + discogsUrl + "\" target=\"_blank\" style=\"color: var(--muted); text-decoration: none;\">Release ID: " + escapeHtml(String(result.id)) + " ↗</a></p>" +
         "</div>";
     }
 
