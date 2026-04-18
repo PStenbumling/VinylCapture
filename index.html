@@ -429,7 +429,7 @@
           <div id="selBox"></div>
         </div>
       </div>
-      <p id="selHint" class="sub sel-hint hidden-row">Dra en ruta över området du vill OCR:a</p>
+      <p id="selHint" class="sub sel-hint hidden-row">Dra en <strong>smal remsa</strong> tätt runt textraden — undvik reflexer och mörka fläckar</p>
       <div class="controls">
         <button id="startCameraBtn" class="ghost">Starta kamera</button>
         <button id="stopCameraBtn" class="ghost" disabled>Stang av kamera</button>
@@ -647,7 +647,7 @@
       };
 
       if (matrixMode) {
-        config.tessedit_pageseg_mode = "7";
+        config.tessedit_pageseg_mode = "13"; // raw line — no segmentation, better for engraved text
         config.tessedit_char_whitelist = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -./";
       }
 
@@ -943,16 +943,24 @@
       const w = x2 - x1;
       const h = y2 - y1;
 
+      // Crop at native resolution
       const tmp = document.createElement("canvas");
       tmp.width = w;
       tmp.height = h;
       tmp.getContext("2d").drawImage(canvas, x1, y1, w, h, 0, 0, w, h);
 
+      // Upscale 3× — Tesseract needs larger text for reliable recognition
+      const scale = 3;
+      const up = document.createElement("canvas");
+      up.width  = w * scale;
+      up.height = h * scale;
+      up.getContext("2d").drawImage(tmp, 0, 0, up.width, up.height);
+
       ocrSelBtn.disabled = true;
       const matrixMode = getMatrixMode();
       const ocrBlob = matrixMode
-        ? await preprocessCanvasEl(tmp, getThreshold())
-        : await new Promise((r) => tmp.toBlob(r, "image/jpeg", 0.95));
+        ? await preprocessCanvasEl(up, getThreshold())
+        : await new Promise((r) => up.toBlob(r, "image/jpeg", 0.95));
 
       const text = (await runOCR(ocrBlob, matrixMode)).trim();
       if (matrixMode) {
