@@ -292,8 +292,9 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     // Config section
-    const DISCOGS_TOKEN = "";
-    const DISCOGS_USERNAME = "";
+    // Token och username läses från sessionStorage — sätts via inloggningsformuläret
+    function getToken() { return sessionStorage.getItem("dg_token") || ""; }
+    function getUsername() { return sessionStorage.getItem("dg_username") || ""; }
 
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
