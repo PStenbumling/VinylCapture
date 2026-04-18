@@ -245,6 +245,30 @@
       display: none;
     }
 
+    .canvas-wrap {
+      position: relative;
+    }
+
+    #selectionOverlay {
+      position: absolute;
+      inset: 0;
+      cursor: crosshair;
+      border-radius: 10px;
+      touch-action: none;
+    }
+
+    #selBox {
+      position: absolute;
+      border: 2px dashed var(--accent);
+      background: rgba(15, 118, 110, 0.18);
+      display: none;
+      pointer-events: none;
+    }
+
+    .sel-hint {
+      margin-top: 4px;
+    }
+
     @media (max-width: 420px) {
       button {
         flex: 1 1 auto;
@@ -345,12 +369,19 @@
 
     <section class="panel">
       <video id="video" autoplay playsinline muted></video>
-      <canvas id="canvas"></canvas>
+      <div class="canvas-wrap">
+        <canvas id="canvas"></canvas>
+        <div id="selectionOverlay" class="hidden-row">
+          <div id="selBox"></div>
+        </div>
+      </div>
+      <p id="selHint" class="sub sel-hint hidden-row">Dra en ruta över området du vill OCR:a</p>
       <div class="controls">
         <button id="startCameraBtn" class="ghost">Starta kamera</button>
         <button id="stopCameraBtn" class="ghost" disabled>Stang av kamera</button>
         <button id="captureBtn">Capture</button>
         <button id="uploadBtn" type="button" class="ghost">Ladda upp bild</button>
+        <button id="ocrSelBtn" type="button" class="ghost" disabled>OCR på markering</button>
         <input id="fileInput" type="file" accept="image/*" class="hidden-input" aria-label="Välj bildfil att ladda upp" />
       </div>
       <p class="sub paste-hint">Eller <strong>klistra in (Ctrl+V)</strong> ett skärmklipp direkt på sidan.</p>
@@ -482,6 +513,7 @@
         });
 
         canvas.style.display = "none";
+        hideImageUI();
         video.srcObject = currentStream;
         await video.play();
         setStatus("Kamera aktiv.", "success");
@@ -536,12 +568,13 @@
       return result.data.text || "";
     }
 
-    async function preprocessCanvas(threshold) {
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    async function preprocessCanvasEl(canvasEl, threshold) {
+      const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+      const { width, height } = canvasEl;
+      const imageData = ctx.getImageData(0, 0, width, height);
       const data = imageData.data;
 
-      const gray = new Uint8Array(canvas.width * canvas.height);
+      const gray = new Uint8Array(width * height);
       for (let i = 0, j = 0; i < data.length; i += 4, j++) {
         gray[j] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
       }
@@ -561,7 +594,12 @@
       }
 
       ctx.putImageData(imageData, 0, 0);
-      return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      return new Promise((resolve) => canvasEl.toBlob(resolve, "image/png"));
+    }
+
+    async function preprocessCanvas(threshold) {
+      const blob = await preprocessCanvasEl(canvas, threshold);
+      return blob;
     }
 
     function getMatrixMode() {
@@ -571,6 +609,116 @@
     function getThreshold() {
       return parseInt(document.getElementById("thresholdSlider").value, 10);
     }
+
+    // ── Selection / crop ──────────────────────────────────────────
+    const selectionOverlay = document.getElementById("selectionOverlay");
+    const selBox = document.getElementById("selBox");
+    const selHint = document.getElementById("selHint");
+    const ocrSelBtn = document.getElementById("ocrSelBtn");
+
+    let selState = null; // { x1, y1, x2, y2 } in canvas pixels
+
+    function showImageUI() {
+      selectionOverlay.classList.remove("hidden-row");
+      selHint.classList.remove("hidden-row");
+    }
+
+    function hideImageUI() {
+      selectionOverlay.classList.add("hidden-row");
+      selHint.classList.add("hidden-row");
+      selBox.style.display = "none";
+      selState = null;
+      ocrSelBtn.disabled = true;
+    }
+
+    function overlayToCanvasPx(clientX, clientY) {
+      const rect = selectionOverlay.getBoundingClientRect();
+      return {
+        x: Math.round(((clientX - rect.left) / rect.width) * canvas.width),
+        y: Math.round(((clientY - rect.top) / rect.height) * canvas.height)
+      };
+    }
+
+    function drawSelBox(start, cur) {
+      const rect = selectionOverlay.getBoundingClientRect();
+      const scaleX = rect.width / canvas.width;
+      const scaleY = rect.height / canvas.height;
+      const x1 = Math.min(start.x, cur.x) * scaleX;
+      const y1 = Math.min(start.y, cur.y) * scaleY;
+      const x2 = Math.max(start.x, cur.x) * scaleX;
+      const y2 = Math.max(start.y, cur.y) * scaleY;
+      selBox.style.display = "block";
+      selBox.style.left = x1 + "px";
+      selBox.style.top = y1 + "px";
+      selBox.style.width = (x2 - x1) + "px";
+      selBox.style.height = (y2 - y1) + "px";
+    }
+
+    let dragStart = null;
+
+    function onDragStart(clientX, clientY) {
+      dragStart = overlayToCanvasPx(clientX, clientY);
+      selBox.style.display = "none";
+      selState = null;
+      ocrSelBtn.disabled = true;
+    }
+
+    function onDragMove(clientX, clientY) {
+      if (!dragStart) return;
+      drawSelBox(dragStart, overlayToCanvasPx(clientX, clientY));
+    }
+
+    function onDragEnd(clientX, clientY) {
+      if (!dragStart) return;
+      const end = overlayToCanvasPx(clientX, clientY);
+      const x1 = Math.min(dragStart.x, end.x);
+      const y1 = Math.min(dragStart.y, end.y);
+      const x2 = Math.max(dragStart.x, end.x);
+      const y2 = Math.max(dragStart.y, end.y);
+      dragStart = null;
+      if (x2 - x1 > 10 && y2 - y1 > 10) {
+        selState = { x1, y1, x2, y2 };
+        ocrSelBtn.disabled = false;
+      } else {
+        selBox.style.display = "none";
+      }
+    }
+
+    selectionOverlay.addEventListener("mousedown", (e) => { e.preventDefault(); onDragStart(e.clientX, e.clientY); });
+    selectionOverlay.addEventListener("mousemove", (e) => onDragMove(e.clientX, e.clientY));
+    selectionOverlay.addEventListener("mouseup", (e) => onDragEnd(e.clientX, e.clientY));
+    selectionOverlay.addEventListener("mouseleave", (e) => { if (dragStart) onDragEnd(e.clientX, e.clientY); });
+
+    selectionOverlay.addEventListener("touchstart", (e) => { e.preventDefault(); const t = e.touches[0]; onDragStart(t.clientX, t.clientY); }, { passive: false });
+    selectionOverlay.addEventListener("touchmove", (e) => { e.preventDefault(); const t = e.touches[0]; onDragMove(t.clientX, t.clientY); }, { passive: false });
+    selectionOverlay.addEventListener("touchend", (e) => { e.preventDefault(); const t = e.changedTouches[0]; onDragEnd(t.clientX, t.clientY); }, { passive: false });
+
+    ocrSelBtn.addEventListener("click", async () => {
+      if (!selState) return;
+      const { x1, y1, x2, y2 } = selState;
+      const w = x2 - x1;
+      const h = y2 - y1;
+
+      const tmp = document.createElement("canvas");
+      tmp.width = w;
+      tmp.height = h;
+      tmp.getContext("2d").drawImage(canvas, x1, y1, w, h, 0, 0, w, h);
+
+      ocrSelBtn.disabled = true;
+      const matrixMode = getMatrixMode();
+      const ocrBlob = matrixMode
+        ? await preprocessCanvasEl(tmp, getThreshold())
+        : await new Promise((r) => tmp.toBlob(r, "image/jpeg", 0.95));
+
+      const text = (await runOCR(ocrBlob, matrixMode)).trim();
+      if (matrixMode) {
+        manualMatrixEl.value = text || "";
+      } else {
+        ocrTextEl.value = text || "";
+      }
+      setStatus(matrixMode ? "Matrix OCR på markering klar." : "OCR på markering klar.", "");
+      ocrSelBtn.disabled = false;
+    });
 
     function getMeaningfulFirstLine(text) {
       const lines = text
@@ -872,6 +1020,7 @@
         if (matrixMode) {
           imageBlob = await preprocessCanvas(getThreshold());
           canvas.style.display = "block";
+          showImageUI();
         }
         const text = (await runOCR(imageBlob, matrixMode)).trim();
 
@@ -992,6 +1141,7 @@
         ctx.drawImage(img, 0, 0);
         URL.revokeObjectURL(url);
         canvas.style.display = "block";
+        showImageUI();
 
         const matrixMode = getMatrixMode();
         const ocrBlob = matrixMode ? await preprocessCanvas(getThreshold()) : blob;
@@ -1002,7 +1152,7 @@
         } else {
           ocrTextEl.value = text || "";
         }
-        setStatus(matrixMode ? "Matrix OCR klar. Kontrollera matrix-fältet." : "OCR klar. Redigera texten om det behövs, tryck sedan Sök i Discogs.", "");
+        setStatus(matrixMode ? "Matrix OCR klar. Kontrollera matrix-fältet." : "OCR klar. Markera ett område för att köra om OCR på en del.", "");
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Fel vid bildladdning.", "error");
