@@ -461,6 +461,10 @@
           <label for="filterContrast">Kontrast <strong id="filterContrastVal">100%</strong></label>
           <input type="range" id="filterContrast" min="0" max="500" value="100" />
         </div>
+        <div class="filter-row">
+          <label for="filterSharpen">Skärpa <strong id="filterSharpenVal">0%</strong></label>
+          <input type="range" id="filterSharpen" min="0" max="100" value="0" />
+        </div>
       </div>
       <div id="status" class="status"></div>
     </section>
@@ -694,8 +698,8 @@
       const out = ctx.createImageData(canvas.width, canvas.height);
       const dst = out.data;
 
-      const grayscale = document.getElementById("filterGrayscale").checked;
-      const invert    = document.getElementById("filterInvert").checked;
+      const grayscale  = document.getElementById("filterGrayscale").checked;
+      const invert     = document.getElementById("filterInvert").checked;
       const brightness = parseInt(document.getElementById("filterBrightness").value) / 100;
       const contrast   = parseInt(document.getElementById("filterContrast").value)   / 100;
 
@@ -703,9 +707,10 @@
         let r = src[i], g = src[i + 1], b = src[i + 2];
 
         if (grayscale) { const v = 0.299 * r + 0.587 * g + 0.114 * b; r = g = b = v; }
-        r = (r - 128) * contrast + 128 * brightness; // brightness + contrast combined
-        g = (g - 128) * contrast + 128 * brightness;
-        b = (b - 128) * contrast + 128 * brightness;
+        // Brightness: multiplicative scale, then contrast centered on 128
+        r = (r * brightness - 128) * contrast + 128;
+        g = (g * brightness - 128) * contrast + 128;
+        b = (b * brightness - 128) * contrast + 128;
         if (invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
 
         dst[i]     = Math.max(0, Math.min(255, r));
@@ -714,6 +719,34 @@
         dst[i + 3] = src[i + 3];
       }
       ctx.putImageData(out, 0, 0);
+
+      const sharpenAmount = parseInt(document.getElementById("filterSharpen").value);
+      if (sharpenAmount > 0) applySharpen(ctx, sharpenAmount / 100);
+    }
+
+    function applySharpen(ctx, amount) {
+      const { width, height } = canvas;
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const src = imageData.data;
+      const out = new Uint8ClampedArray(src.length);
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i  = (y * width + x) * 4;
+          const iT = (y > 0          ? (y - 1) * width + x : y * width + x) * 4;
+          const iB = (y < height - 1 ? (y + 1) * width + x : y * width + x) * 4;
+          const iL = (y * width + (x > 0         ? x - 1 : x)) * 4;
+          const iR = (y * width + (x < width - 1 ? x + 1 : x)) * 4;
+
+          for (let c = 0; c < 3; c++) {
+            const sharpened = 5 * src[i+c] - src[iT+c] - src[iB+c] - src[iL+c] - src[iR+c];
+            out[i+c] = Math.max(0, Math.min(255, src[i+c] * (1 - amount) + sharpened * amount));
+          }
+          out[i + 3] = src[i + 3];
+        }
+      }
+      imageData.data.set(out);
+      ctx.putImageData(imageData, 0, 0);
     }
 
     function scheduleApplyFilters() {
@@ -727,8 +760,10 @@
       document.getElementById("filterInvert").checked    = false;
       document.getElementById("filterBrightness").value  = "100";
       document.getElementById("filterContrast").value    = "100";
+      document.getElementById("filterSharpen").value     = "0";
       document.getElementById("filterBrightnessVal").textContent = "100%";
       document.getElementById("filterContrastVal").textContent   = "100%";
+      document.getElementById("filterSharpenVal").textContent    = "0%";
       if (originalImageData) {
         canvas.getContext("2d", { willReadFrequently: true }).putImageData(originalImageData, 0, 0);
       }
@@ -737,13 +772,15 @@
     ["filterGrayscale", "filterInvert"].forEach((id) =>
       document.getElementById(id).addEventListener("change", scheduleApplyFilters)
     );
-    document.getElementById("filterBrightness").addEventListener("input", (e) => {
-      document.getElementById("filterBrightnessVal").textContent = e.target.value + "%";
-      scheduleApplyFilters();
-    });
-    document.getElementById("filterContrast").addEventListener("input", (e) => {
-      document.getElementById("filterContrastVal").textContent = e.target.value + "%";
-      scheduleApplyFilters();
+    [
+      ["filterBrightness", "filterBrightnessVal"],
+      ["filterContrast",   "filterContrastVal"],
+      ["filterSharpen",    "filterSharpenVal"],
+    ].forEach(([sliderId, labelId]) => {
+      document.getElementById(sliderId).addEventListener("input", (e) => {
+        document.getElementById(labelId).textContent = e.target.value + "%";
+        scheduleApplyFilters();
+      });
     });
     document.getElementById("resetFiltersBtn").addEventListener("click", resetFilters);
 
