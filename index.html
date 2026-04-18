@@ -269,6 +269,55 @@
       margin-top: 4px;
     }
 
+    .image-filters {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #f0ece0;
+      border-radius: 10px;
+      border: 1px solid #e0d8c8;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .filter-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.9rem;
+    }
+
+    .filter-reset {
+      padding: 4px 10px;
+      font-size: 0.82rem;
+      min-width: unset;
+      font-weight: 600;
+    }
+
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .filter-row label {
+      min-width: 140px;
+    }
+
+    .filter-row input[type="range"] {
+      flex: 1;
+    }
+
+    .filter-check {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      min-width: unset;
+    }
+
     @media (max-width: 420px) {
       button {
         flex: 1 1 auto;
@@ -394,6 +443,24 @@
       <div id="thresholdRow" class="threshold-row hidden-row">
         <label for="thresholdSlider">Kontrasttröskel: <strong id="thresholdVal">128</strong></label>
         <input type="range" id="thresholdSlider" min="40" max="220" value="128" />
+      </div>
+      <div id="imageFilters" class="image-filters hidden-row">
+        <div class="filter-header">
+          <strong>Bildfilter</strong>
+          <button id="resetFiltersBtn" type="button" class="ghost filter-reset">Återställ</button>
+        </div>
+        <div class="filter-row">
+          <label class="filter-check"><input type="checkbox" id="filterGrayscale" /> Gråskala</label>
+          <label class="filter-check"><input type="checkbox" id="filterInvert" /> Invertera</label>
+        </div>
+        <div class="filter-row">
+          <label for="filterBrightness">Ljusstyrka <strong id="filterBrightnessVal">100%</strong></label>
+          <input type="range" id="filterBrightness" min="0" max="300" value="100" />
+        </div>
+        <div class="filter-row">
+          <label for="filterContrast">Kontrast <strong id="filterContrastVal">100%</strong></label>
+          <input type="range" id="filterContrast" min="0" max="500" value="100" />
+        </div>
       </div>
       <div id="status" class="status"></div>
     </section>
@@ -610,6 +677,76 @@
       return parseInt(document.getElementById("thresholdSlider").value, 10);
     }
 
+    // ── Image filters ─────────────────────────────────────────────
+    const imageFiltersPanel = document.getElementById("imageFilters");
+    let originalImageData = null;
+    let filterRafPending = false;
+
+    function storeOriginalImage() {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
+
+    function applyFilters() {
+      if (!originalImageData) return;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const src = originalImageData.data;
+      const out = ctx.createImageData(canvas.width, canvas.height);
+      const dst = out.data;
+
+      const grayscale = document.getElementById("filterGrayscale").checked;
+      const invert    = document.getElementById("filterInvert").checked;
+      const brightness = parseInt(document.getElementById("filterBrightness").value) / 100;
+      const contrast   = parseInt(document.getElementById("filterContrast").value)   / 100;
+
+      for (let i = 0; i < src.length; i += 4) {
+        let r = src[i], g = src[i + 1], b = src[i + 2];
+
+        if (grayscale) { const v = 0.299 * r + 0.587 * g + 0.114 * b; r = g = b = v; }
+        r = (r - 128) * contrast + 128 * brightness; // brightness + contrast combined
+        g = (g - 128) * contrast + 128 * brightness;
+        b = (b - 128) * contrast + 128 * brightness;
+        if (invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+
+        dst[i]     = Math.max(0, Math.min(255, r));
+        dst[i + 1] = Math.max(0, Math.min(255, g));
+        dst[i + 2] = Math.max(0, Math.min(255, b));
+        dst[i + 3] = src[i + 3];
+      }
+      ctx.putImageData(out, 0, 0);
+    }
+
+    function scheduleApplyFilters() {
+      if (filterRafPending) return;
+      filterRafPending = true;
+      requestAnimationFrame(() => { filterRafPending = false; applyFilters(); });
+    }
+
+    function resetFilters() {
+      document.getElementById("filterGrayscale").checked = false;
+      document.getElementById("filterInvert").checked    = false;
+      document.getElementById("filterBrightness").value  = "100";
+      document.getElementById("filterContrast").value    = "100";
+      document.getElementById("filterBrightnessVal").textContent = "100%";
+      document.getElementById("filterContrastVal").textContent   = "100%";
+      if (originalImageData) {
+        canvas.getContext("2d", { willReadFrequently: true }).putImageData(originalImageData, 0, 0);
+      }
+    }
+
+    ["filterGrayscale", "filterInvert"].forEach((id) =>
+      document.getElementById(id).addEventListener("change", scheduleApplyFilters)
+    );
+    document.getElementById("filterBrightness").addEventListener("input", (e) => {
+      document.getElementById("filterBrightnessVal").textContent = e.target.value + "%";
+      scheduleApplyFilters();
+    });
+    document.getElementById("filterContrast").addEventListener("input", (e) => {
+      document.getElementById("filterContrastVal").textContent = e.target.value + "%";
+      scheduleApplyFilters();
+    });
+    document.getElementById("resetFiltersBtn").addEventListener("click", resetFilters);
+
     // ── Selection / crop ──────────────────────────────────────────
     const selectionOverlay = document.getElementById("selectionOverlay");
     const selBox = document.getElementById("selBox");
@@ -621,14 +758,18 @@
     function showImageUI() {
       selectionOverlay.classList.remove("hidden-row");
       selHint.classList.remove("hidden-row");
+      imageFiltersPanel.classList.remove("hidden-row");
     }
 
     function hideImageUI() {
       selectionOverlay.classList.add("hidden-row");
       selHint.classList.add("hidden-row");
+      imageFiltersPanel.classList.add("hidden-row");
       selBox.style.display = "none";
       selState = null;
       ocrSelBtn.disabled = true;
+      originalImageData = null;
+      resetFilters();
     }
 
     function overlayToCanvasPx(clientX, clientY) {
@@ -1017,6 +1158,7 @@
       try {
         const matrixMode = getMatrixMode();
         let imageBlob = await captureImage();
+        storeOriginalImage();
         if (matrixMode) {
           imageBlob = await preprocessCanvas(getThreshold());
           canvas.style.display = "block";
@@ -1140,6 +1282,7 @@
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         ctx.drawImage(img, 0, 0);
         URL.revokeObjectURL(url);
+        storeOriginalImage();
         canvas.style.display = "block";
         showImageUI();
 
