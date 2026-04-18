@@ -143,6 +143,18 @@
       font-size: 0.92rem;
     }
 
+    textarea#ocrText {
+      width: 100%;
+      background: #f7f3ea;
+      border: 1px solid #e8dfce;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 0.92rem;
+      font-family: monospace;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+
     .result {
       display: grid;
       grid-template-columns: 84px 1fr;
@@ -276,8 +288,12 @@
 
     <section class="panel">
       <h2>Detected text</h2>
-      <p class="sub" id="queryInfo">Ingen OCR-korning an.</p>
-      <pre id="ocrText">-</pre>
+      <p class="sub">Redigera texten innan du soker.</p>
+      <textarea id="ocrText" rows="5" placeholder="OCR-text visas har, du kan redigera fritt..."></textarea>
+      <div class="controls">
+        <button id="searchBtn" disabled>Sok i Discogs</button>
+      </div>
+      <p class="sub" id="queryInfo"></p>
     </section>
 
     <section class="panel">
@@ -549,21 +565,48 @@
     }
 
     captureBtn.addEventListener("click", async () => {
-      setButtonsBusy(true);
+      captureBtn.disabled = true;
+      restartBtn.disabled = true;
+      const searchBtn = document.getElementById("searchBtn");
+      searchBtn.disabled = true;
       currentRelease = null;
       addBtn.disabled = true;
+      queryInfoEl.textContent = "";
 
       try {
         const imageBlob = await captureImage();
         const text = (await runOCR(imageBlob)).trim();
 
-        ocrTextEl.textContent = text || "Ingen text hittades.";
+        ocrTextEl.value = text || "";
+        searchBtn.disabled = false;
+        setStatus("OCR klar. Redigera texten om det behovs, tryck sedan Sok i Discogs.", "");
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Fel vid OCR.", "error");
+      } finally {
+        captureBtn.disabled = false;
+        restartBtn.disabled = false;
+      }
+    });
+
+    document.getElementById("searchBtn").addEventListener("click", async () => {
+      const searchBtn = document.getElementById("searchBtn");
+      searchBtn.disabled = true;
+      addBtn.disabled = true;
+      currentRelease = null;
+
+      try {
+        const text = ocrTextEl.value.trim();
+        if (!text) {
+          setStatus("Textrutan ar tom. Skriv eller fanga bild forst.", "error");
+          return;
+        }
 
         const query = buildSearchQuery(text);
         if (!query) {
-          queryInfoEl.textContent = "Hittade ingen vettig sokfras i OCR-texten.";
+          queryInfoEl.textContent = "Ingen sokfras kunde extraheras.";
           renderResult(null);
-          setStatus("OCR klar men ingen sokfras hittades.", "error");
+          setStatus("Ingen sokfras hittades i texten.", "error");
           return;
         }
 
@@ -579,6 +622,8 @@
           return;
         }
 
+        addBtn.disabled = addedReleaseIds.has(result.id);
+
         if (addedReleaseIds.has(result.id)) {
           setStatus("Release finns redan i lokal historik.", "success");
         } else {
@@ -589,7 +634,7 @@
         renderResult(null);
         setStatus(error.message || "Ett fel uppstod.", "error");
       } finally {
-        setButtonsBusy(false);
+        searchBtn.disabled = false;
       }
     });
 
