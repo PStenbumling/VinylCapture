@@ -473,6 +473,14 @@
           <label for="filterSharpen">Skärpa <strong id="filterSharpenVal">0%</strong></label>
           <input type="range" id="filterSharpen" min="0" max="100" value="0" />
         </div>
+        <div class="filter-row">
+          <label for="filterBlur">Oskärpa <strong id="filterBlurVal">0px</strong></label>
+          <input type="range" id="filterBlur" min="0" max="4" step="1" value="0" />
+        </div>
+        <div class="filter-row">
+          <label for="filterRotation">Rotation <strong id="filterRotationVal">0°</strong></label>
+          <input type="range" id="filterRotation" min="-90" max="90" step="1" value="0" />
+        </div>
       </div>
       <div id="status" class="status"></div>
     </section>
@@ -691,18 +699,37 @@
 
     // ── Image filters ─────────────────────────────────────────────
     const imageFiltersPanel = document.getElementById("imageFilters");
-    let originalImageData = null;
+    let originalCanvas = null;
     let filterRafPending = false;
 
     function storeOriginalImage() {
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      originalCanvas = document.createElement("canvas");
+      originalCanvas.width  = canvas.width;
+      originalCanvas.height = canvas.height;
+      originalCanvas.getContext("2d").drawImage(canvas, 0, 0);
     }
 
     function applyFilters() {
-      if (!originalImageData) return;
+      if (!originalCanvas) return;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      const src = originalImageData.data;
+
+      // 1. Draw original with rotation
+      const rotation = parseInt(document.getElementById("filterRotation").value);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (rotation !== 0) {
+        const rad = rotation * Math.PI / 180;
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(rad);
+        ctx.drawImage(originalCanvas, -canvas.width / 2, -canvas.height / 2);
+        ctx.restore();
+      } else {
+        ctx.drawImage(originalCanvas, 0, 0);
+      }
+
+      // 2. Pixel filters: grayscale → brightness → contrast → invert
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const src = imageData.data;
       const out = ctx.createImageData(canvas.width, canvas.height);
       const dst = out.data;
 
@@ -713,14 +740,11 @@
 
       for (let i = 0; i < src.length; i += 4) {
         let r = src[i], g = src[i + 1], b = src[i + 2];
-
         if (grayscale) { const v = 0.299 * r + 0.587 * g + 0.114 * b; r = g = b = v; }
-        // Brightness: multiplicative scale, then contrast centered on 128
         r = (r * brightness - 128) * contrast + 128;
         g = (g * brightness - 128) * contrast + 128;
         b = (b * brightness - 128) * contrast + 128;
         if (invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
-
         dst[i]     = Math.max(0, Math.min(255, r));
         dst[i + 1] = Math.max(0, Math.min(255, g));
         dst[i + 2] = Math.max(0, Math.min(255, b));
@@ -728,6 +752,18 @@
       }
       ctx.putImageData(out, 0, 0);
 
+      // 3. Blur (reduces scratch/groove noise before sharpening)
+      const blurPx = parseInt(document.getElementById("filterBlur").value);
+      if (blurPx > 0) {
+        const tmp = document.createElement("canvas");
+        tmp.width = canvas.width; tmp.height = canvas.height;
+        const tmpCtx = tmp.getContext("2d");
+        tmpCtx.filter = `blur(${blurPx}px)`;
+        tmpCtx.drawImage(canvas, 0, 0);
+        ctx.drawImage(tmp, 0, 0);
+      }
+
+      // 4. Sharpen
       const sharpenAmount = parseInt(document.getElementById("filterSharpen").value);
       if (sharpenAmount > 0) applySharpen(ctx, sharpenAmount / 100);
     }
@@ -764,16 +800,20 @@
     }
 
     function resetFilters() {
-      document.getElementById("filterGrayscale").checked = false;
-      document.getElementById("filterInvert").checked    = false;
-      document.getElementById("filterBrightness").value  = "100";
-      document.getElementById("filterContrast").value    = "100";
-      document.getElementById("filterSharpen").value     = "0";
+      document.getElementById("filterGrayscale").checked         = false;
+      document.getElementById("filterInvert").checked            = false;
+      document.getElementById("filterBrightness").value          = "100";
+      document.getElementById("filterContrast").value            = "100";
+      document.getElementById("filterSharpen").value             = "0";
+      document.getElementById("filterBlur").value                = "0";
+      document.getElementById("filterRotation").value            = "0";
       document.getElementById("filterBrightnessVal").textContent = "100%";
       document.getElementById("filterContrastVal").textContent   = "100%";
       document.getElementById("filterSharpenVal").textContent    = "0%";
-      if (originalImageData) {
-        canvas.getContext("2d", { willReadFrequently: true }).putImageData(originalImageData, 0, 0);
+      document.getElementById("filterBlurVal").textContent       = "0px";
+      document.getElementById("filterRotationVal").textContent   = "0°";
+      if (originalCanvas) {
+        canvas.getContext("2d", { willReadFrequently: true }).drawImage(originalCanvas, 0, 0);
       }
     }
 
@@ -781,26 +821,32 @@
       document.getElementById(id).addEventListener("change", scheduleApplyFilters)
     );
     [
-      ["filterBrightness", "filterBrightnessVal"],
-      ["filterContrast",   "filterContrastVal"],
-      ["filterSharpen",    "filterSharpenVal"],
-    ].forEach(([sliderId, labelId]) => {
+      ["filterBrightness", "filterBrightnessVal", "%"],
+      ["filterContrast",   "filterContrastVal",   "%"],
+      ["filterSharpen",    "filterSharpenVal",     "%"],
+      ["filterBlur",       "filterBlurVal",        "px"],
+      ["filterRotation",   "filterRotationVal",    "°"],
+    ].forEach(([sliderId, labelId, unit]) => {
       document.getElementById(sliderId).addEventListener("input", (e) => {
-        document.getElementById(labelId).textContent = e.target.value + "%";
+        document.getElementById(labelId).textContent = e.target.value + unit;
         scheduleApplyFilters();
       });
     });
     document.getElementById("resetFiltersBtn").addEventListener("click", resetFilters);
 
     document.getElementById("matrixPresetBtn").addEventListener("click", () => {
-      document.getElementById("filterGrayscale").checked = true;
-      document.getElementById("filterInvert").checked    = true;
-      document.getElementById("filterBrightness").value  = "85";
-      document.getElementById("filterContrast").value    = "180";
-      document.getElementById("filterSharpen").value     = "65";
+      document.getElementById("filterGrayscale").checked         = true;
+      document.getElementById("filterInvert").checked            = true;
+      document.getElementById("filterBrightness").value          = "85";
+      document.getElementById("filterContrast").value            = "180";
+      document.getElementById("filterSharpen").value             = "65";
+      document.getElementById("filterBlur").value                = "1";
+      document.getElementById("filterRotation").value            = "0";
       document.getElementById("filterBrightnessVal").textContent = "85%";
       document.getElementById("filterContrastVal").textContent   = "180%";
       document.getElementById("filterSharpenVal").textContent    = "65%";
+      document.getElementById("filterBlurVal").textContent       = "1px";
+      document.getElementById("filterRotationVal").textContent   = "0°";
       scheduleApplyFilters();
     });
 
@@ -825,7 +871,7 @@
       selBox.style.display = "none";
       selState = null;
       ocrSelBtn.disabled = true;
-      originalImageData = null;
+      originalCanvas = null;
       resetFilters();
     }
 
