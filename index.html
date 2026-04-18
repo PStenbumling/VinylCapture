@@ -155,6 +155,17 @@
       box-sizing: border-box;
     }
 
+    #manualCatalog {
+      width: 100%;
+      margin-bottom: 8px;
+      background: #f7f3ea;
+      border: 1px solid #e8dfce;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 0.95rem;
+      box-sizing: border-box;
+    }
+
     .result {
       display: grid;
       grid-template-columns: 84px 1fr;
@@ -288,10 +299,11 @@
 
     <section class="panel">
       <h2>Detected text</h2>
-      <p class="sub">Redigera texten innan du soker.</p>
+      <p class="sub">Skriv katalognummer manuellt (prioriteras), eller redigera OCR-texten.</p>
+      <input id="manualCatalog" type="text" placeholder="Manuell katalog, t.ex. S 66216" />
       <textarea id="ocrText" rows="5" placeholder="OCR-text visas har, du kan redigera fritt..."></textarea>
       <div class="controls">
-        <button id="searchBtn" disabled>Sok i Discogs</button>
+        <button id="searchBtn">Sok i Discogs</button>
       </div>
       <p class="sub" id="queryInfo"></p>
     </section>
@@ -319,6 +331,7 @@
     const addBtn = document.getElementById("addBtn");
 
     const statusEl = document.getElementById("status");
+    const manualCatalogEl = document.getElementById("manualCatalog");
     const ocrTextEl = document.getElementById("ocrText");
     const queryInfoEl = document.getElementById("queryInfo");
     const resultRootEl = document.getElementById("resultRoot");
@@ -602,6 +615,7 @@
       } finally {
         captureBtn.disabled = false;
         restartBtn.disabled = false;
+        searchBtn.disabled = false;
       }
     });
 
@@ -612,21 +626,18 @@
       currentRelease = null;
 
       try {
+        const manualCatalog = manualCatalogEl.value.trim();
         const text = ocrTextEl.value.trim();
-        if (!text) {
-          setStatus("Textrutan ar tom. Skriv eller fanga bild forst.", "error");
-          return;
-        }
+        const query = manualCatalog || buildSearchQuery(text);
 
-        const query = buildSearchQuery(text);
         if (!query) {
           queryInfoEl.textContent = "Ingen sokfras kunde extraheras.";
           renderResult(null);
-          setStatus("Ingen sokfras hittades i texten.", "error");
+          setStatus("Skriv manuell katalog eller fanga bild forst.", "error");
           return;
         }
 
-        queryInfoEl.textContent = "Sokfras: " + query;
+        queryInfoEl.textContent = "Sokfras (" + (manualCatalog ? "manuell" : "OCR") + "): " + query;
         setStatus("Soker i Discogs...");
 
         const result = await searchDiscogs(query);
