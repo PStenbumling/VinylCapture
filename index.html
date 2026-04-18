@@ -302,8 +302,9 @@
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
       <div class="controls">
+        <button id="startCameraBtn" class="ghost">Starta kamera</button>
+        <button id="stopCameraBtn" class="ghost" disabled>Stang av kamera</button>
         <button id="captureBtn">Capture</button>
-        <button id="restartBtn" class="ghost">Restart camera</button>
       </div>
       <div id="status" class="status"></div>
     </section>
@@ -338,8 +339,9 @@
 
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
+    const startCameraBtn = document.getElementById("startCameraBtn");
+    const stopCameraBtn = document.getElementById("stopCameraBtn");
     const captureBtn = document.getElementById("captureBtn");
-    const restartBtn = document.getElementById("restartBtn");
     const addBtn = document.getElementById("addBtn");
 
     const statusEl = document.getElementById("status");
@@ -367,9 +369,17 @@
     }
 
     function setButtonsBusy(isBusy) {
-      captureBtn.disabled = isBusy;
-      restartBtn.disabled = isBusy;
+      captureBtn.disabled = isBusy || !currentStream;
+      startCameraBtn.disabled = isBusy || !!currentStream;
+      stopCameraBtn.disabled = isBusy || !currentStream;
       addBtn.disabled = isBusy || !currentRelease;
+    }
+
+    function updateCameraControlState() {
+      const cameraActive = !!currentStream;
+      captureBtn.disabled = !cameraActive;
+      startCameraBtn.disabled = cameraActive;
+      stopCameraBtn.disabled = !cameraActive;
     }
 
     function saveAddedReleaseIds() {
@@ -378,6 +388,7 @@
 
     function stopCamera() {
       if (!currentStream) {
+        updateCameraControlState();
         return;
       }
 
@@ -385,7 +396,10 @@
         track.stop();
       }
 
+      video.srcObject = null;
       currentStream = null;
+      setStatus("Kamera avstangd.");
+      updateCameraControlState();
     }
 
     async function startCamera() {
@@ -405,9 +419,11 @@
         video.srcObject = currentStream;
         await video.play();
         setStatus("Kamera aktiv.", "success");
+        updateCameraControlState();
       } catch (error) {
         console.error(error);
         setStatus("Kunde inte starta kameran. Kontrollera behorighet och URL.", "error");
+        updateCameraControlState();
       }
     }
 
@@ -733,7 +749,8 @@
 
     captureBtn.addEventListener("click", async () => {
       captureBtn.disabled = true;
-      restartBtn.disabled = true;
+      startCameraBtn.disabled = true;
+      stopCameraBtn.disabled = true;
       const searchBtn = document.getElementById("searchBtn");
       searchBtn.disabled = true;
       currentRelease = null;
@@ -751,8 +768,7 @@
         console.error(error);
         setStatus(error.message || "Fel vid OCR.", "error");
       } finally {
-        captureBtn.disabled = false;
-        restartBtn.disabled = false;
+        updateCameraControlState();
         searchBtn.disabled = false;
       }
     });
@@ -836,13 +852,17 @@
       }
     });
 
-    restartBtn.addEventListener("click", async () => {
+    startCameraBtn.addEventListener("click", async () => {
       setButtonsBusy(true);
       try {
         await startCamera();
       } finally {
-        setButtonsBusy(false);
+        updateCameraControlState();
       }
+    });
+
+    stopCameraBtn.addEventListener("click", () => {
+      stopCamera();
     });
 
     function updateSecureContextHint() {
@@ -870,7 +890,8 @@
       sessionStorage.setItem("dg_token", token);
       sessionStorage.setItem("dg_username", username);
       loginOverlay.classList.add("hidden");
-      startCamera();
+      setStatus("Inloggad. Tryck Starta kamera nar du vill skanna.");
+      updateCameraControlState();
     });
 
     (async function init() {
@@ -886,18 +907,21 @@
       if (!window.isSecureContext) {
         setStatus("Kamera kraver HTTPS eller localhost. Oppna sidan via https-lank.", "error");
         captureBtn.disabled = true;
-        restartBtn.disabled = true;
+        startCameraBtn.disabled = true;
+        stopCameraBtn.disabled = true;
         return;
       }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setStatus("Din webblasare saknar getUserMedia-stod.", "error");
         captureBtn.disabled = true;
-        restartBtn.disabled = true;
+        startCameraBtn.disabled = true;
+        stopCameraBtn.disabled = true;
         return;
       }
 
-      await startCamera();
+      updateCameraControlState();
+      setStatus("Kamera ar valfri. Tryck Starta kamera nar du vill skanna.");
     })();
   </script>
 </body>
