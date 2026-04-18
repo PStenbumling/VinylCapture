@@ -310,6 +310,11 @@
       flex: 1;
     }
 
+    .filter-btn-group {
+      display: flex;
+      gap: 6px;
+    }
+
     .filter-check {
       display: flex;
       align-items: center;
@@ -447,7 +452,10 @@
       <div id="imageFilters" class="image-filters hidden-row">
         <div class="filter-header">
           <strong>Bildfilter</strong>
-          <button id="resetFiltersBtn" type="button" class="ghost filter-reset">Återställ</button>
+          <div class="filter-btn-group">
+            <button id="matrixPresetBtn" type="button" class="ghost filter-reset">Matrix-preset</button>
+            <button id="resetFiltersBtn" type="button" class="ghost filter-reset">Återställ</button>
+          </div>
         </div>
         <div class="filter-row">
           <label class="filter-check"><input type="checkbox" id="filterGrayscale" /> Gråskala</label>
@@ -783,6 +791,18 @@
       });
     });
     document.getElementById("resetFiltersBtn").addEventListener("click", resetFilters);
+
+    document.getElementById("matrixPresetBtn").addEventListener("click", () => {
+      document.getElementById("filterGrayscale").checked = true;
+      document.getElementById("filterInvert").checked    = true;
+      document.getElementById("filterBrightness").value  = "85";
+      document.getElementById("filterContrast").value    = "180";
+      document.getElementById("filterSharpen").value     = "65";
+      document.getElementById("filterBrightnessVal").textContent = "85%";
+      document.getElementById("filterContrastVal").textContent   = "180%";
+      document.getElementById("filterSharpenVal").textContent    = "65%";
+      scheduleApplyFilters();
+    });
 
     // ── Selection / crop ──────────────────────────────────────────
     const selectionOverlay = document.getElementById("selectionOverlay");
