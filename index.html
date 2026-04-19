@@ -694,7 +694,7 @@
       };
 
       if (matrixMode) {
-        config.tessedit_pageseg_mode = "13"; // raw line — no segmentation, better for engraved text
+        config.tessedit_pageseg_mode = "11"; // sparse text — finds text anywhere, not assuming single line
         config.tessedit_char_whitelist = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -./";
       }
 
@@ -752,7 +752,7 @@
 
       for (const p of patterns) {
         const m = text.match(p);
-        if (m) return m[0].trim();
+        if (m && m[0].trim().length >= 4) return m[0].trim();
       }
       return "";
     }
