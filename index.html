@@ -269,6 +269,39 @@
       margin-top: 4px;
     }
 
+    .camera-toggle {
+      width: 100%;
+      border-radius: 8px;
+      text-align: left;
+      background: #ece8de;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 8px 12px;
+      min-width: unset;
+      margin-bottom: 10px;
+    }
+
+    .camera-toggle:hover {
+      background: #ddd8cc;
+    }
+
+    #cameraSection {
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+      max-height: 600px;
+      opacity: 1;
+    }
+
+    #cameraSection.collapsed {
+      max-height: 0;
+      opacity: 0;
+    }
+
+    .image-controls {
+      margin-top: 10px;
+    }
+
     .image-filters {
       margin-top: 12px;
       padding: 10px 12px;
@@ -427,7 +460,20 @@
     </section>
 
     <section class="panel">
-      <video id="video" autoplay playsinline muted></video>
+      <button id="cameraToggleBtn" type="button" class="camera-toggle">Kamera &amp; uppladdning ▼</button>
+
+      <div id="cameraSection">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="controls">
+          <button id="startCameraBtn" class="ghost">Starta kamera</button>
+          <button id="stopCameraBtn" class="ghost" disabled>Stang av kamera</button>
+          <button id="captureBtn">Capture</button>
+          <button id="uploadBtn" type="button" class="ghost">Ladda upp bild</button>
+          <input id="fileInput" type="file" accept="image/*" class="hidden-input" aria-label="Välj bildfil att ladda upp" />
+        </div>
+        <p class="sub paste-hint">Eller <strong>klistra in (Ctrl+V)</strong> ett skärmklipp direkt på sidan.</p>
+      </div>
+
       <div class="canvas-wrap">
         <canvas id="canvas"></canvas>
         <div id="selectionOverlay" class="hidden-row">
@@ -435,16 +481,10 @@
         </div>
       </div>
       <p id="selHint" class="sub sel-hint hidden-row">Dra en <strong>smal remsa</strong> tätt runt textraden — undvik reflexer och mörka fläckar</p>
-      <div class="controls">
-        <button id="startCameraBtn" class="ghost">Starta kamera</button>
-        <button id="stopCameraBtn" class="ghost" disabled>Stang av kamera</button>
-        <button id="captureBtn">Capture</button>
-        <button id="uploadBtn" type="button" class="ghost">Ladda upp bild</button>
+      <div class="controls image-controls">
         <button id="ocrSelBtn" type="button" class="ghost" disabled>OCR på markering</button>
         <button id="geminiBtn" type="button" class="ghost" disabled>Gemini AI</button>
-        <input id="fileInput" type="file" accept="image/*" class="hidden-input" aria-label="Välj bildfil att ladda upp" />
       </div>
-      <p class="sub paste-hint">Eller <strong>klistra in (Ctrl+V)</strong> ett skärmklipp direkt på sidan.</p>
       <div class="mode-row">
         <label class="mode-toggle">
           <input type="checkbox" id="matrixModeCheck" />
@@ -607,6 +647,7 @@
 
         canvas.style.display = "none";
         hideImageUI();
+        setCameraCollapsed(false);
         video.srcObject = currentStream;
         await video.play();
         setStatus("Kamera aktiv.", "success");
@@ -922,6 +963,21 @@
     });
 
     // ── Selection / crop ──────────────────────────────────────────
+    // ── Camera section toggle ─────────────────────────────────────
+    const cameraSection = document.getElementById("cameraSection");
+    const cameraToggleBtn = document.getElementById("cameraToggleBtn");
+
+    function setCameraCollapsed(collapsed) {
+      cameraSection.classList.toggle("collapsed", collapsed);
+      cameraToggleBtn.textContent = collapsed
+        ? "Kamera \u0026 uppladdning \u25B6"
+        : "Kamera \u0026 uppladdning \u25BC";
+    }
+
+    cameraToggleBtn.addEventListener("click", () => {
+      setCameraCollapsed(!cameraSection.classList.contains("collapsed"));
+    });
+
     const selectionOverlay = document.getElementById("selectionOverlay");
     const selBox = document.getElementById("selBox");
     const selHint = document.getElementById("selHint");
@@ -930,6 +986,7 @@
     let selState = null; // { x1, y1, x2, y2 } in canvas pixels
 
     function showImageUI() {
+      setCameraCollapsed(true);
       selectionOverlay.classList.remove("hidden-row");
       selHint.classList.remove("hidden-row");
       imageFiltersPanel.classList.remove("hidden-row");
