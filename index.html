@@ -409,6 +409,11 @@
         <p style="margin: 4px 0 8px; font-size: 0.85rem; color: var(--muted);">Ditt Discogs användarnamn (samma som du loggar in med)</p>
         <input id="inputUsername" type="text" autocomplete="off" placeholder="ditt_användarnamn" />
       </div>
+      <div>
+        <label for="inputGemini">Gemini API-nyckel <span style="font-weight:normal;color:var(--muted)">(valfri — för AI-igenkänning av matrix)</span></label>
+        <p style="margin: 4px 0 8px; font-size: 0.85rem; color: var(--muted);">Hämta gratis nyckel från <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none; font-weight: 600;">Google AI Studio</a></p>
+        <input id="inputGemini" type="password" autocomplete="off" placeholder="AIza..." />
+      </div>
       <div id="loginError" class="status error"></div>
       <button id="loginBtn">Spara och fortsätt</button>
     </div>
@@ -436,6 +441,7 @@
         <button id="captureBtn">Capture</button>
         <button id="uploadBtn" type="button" class="ghost">Ladda upp bild</button>
         <button id="ocrSelBtn" type="button" class="ghost" disabled>OCR på markering</button>
+        <button id="geminiBtn" type="button" class="ghost" disabled>Gemini AI</button>
         <input id="fileInput" type="file" accept="image/*" class="hidden-input" aria-label="Välj bildfil att ladda upp" />
       </div>
       <p class="sub paste-hint">Eller <strong>klistra in (Ctrl+V)</strong> ett skärmklipp direkt på sidan.</p>
@@ -834,6 +840,71 @@
     });
     document.getElementById("resetFiltersBtn").addEventListener("click", resetFilters);
 
+    // ── Gemini AI vision ──────────────────────────────────────────
+    function getGeminiKey() { return sessionStorage.getItem("gemini_key") || ""; }
+
+    async function callGeminiVision(canvasEl) {
+      const key = getGeminiKey();
+      if (!key) throw new Error("Gemini API-nyckel saknas. Lägg till den i inställningarna (ladda om sidan).");
+
+      const base64 = canvasEl.toDataURL("image/jpeg", 0.95).split(",")[1];
+
+      const body = {
+        contents: [{
+          parts: [
+            { text: "This is a cropped photo of a vinyl record runout groove. Read any engraved or stamped matrix/catalog number visible (e.g. 'S 66260-1'). Reply with ONLY the text you can read. If nothing is readable, reply with an empty string." },
+            { inline_data: { mime_type: "image/jpeg", data: base64 } }
+          ]
+        }]
+      };
+
+      const res = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + encodeURIComponent(key),
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Gemini-anrop misslyckades (" + res.status + ").");
+      }
+      const data = await res.json();
+      return (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+    }
+
+    const geminiBtn = document.getElementById("geminiBtn");
+
+    geminiBtn.addEventListener("click", async () => {
+      geminiBtn.disabled = true;
+      setStatus("Skickar till Gemini AI...");
+
+      try {
+        let srcCanvas;
+        if (selState) {
+          // Use current crop selection, upscaled 3×
+          const { x1, y1, x2, y2 } = selState;
+          const w = x2 - x1, h = y2 - y1;
+          const tmp = document.createElement("canvas");
+          tmp.width = w * 3; tmp.height = h * 3;
+          tmp.getContext("2d").drawImage(canvas, x1, y1, w, h, 0, 0, tmp.width, tmp.height);
+          srcCanvas = tmp;
+        } else {
+          srcCanvas = canvas;
+        }
+
+        const text = await callGeminiVision(srcCanvas);
+        if (getMatrixMode()) {
+          manualMatrixEl.value = text || "";
+        } else {
+          ocrTextEl.value = text || "";
+        }
+        setStatus(text ? "Gemini: " + text : "Gemini hittade ingen text.", text ? "success" : "");
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Gemini-fel.", "error");
+      } finally {
+        geminiBtn.disabled = false;
+      }
+    });
+
     document.getElementById("matrixPresetBtn").addEventListener("click", () => {
       document.getElementById("filterGrayscale").checked         = true;
       document.getElementById("filterInvert").checked            = true;
@@ -862,6 +933,7 @@
       selectionOverlay.classList.remove("hidden-row");
       selHint.classList.remove("hidden-row");
       imageFiltersPanel.classList.remove("hidden-row");
+      geminiBtn.disabled = !getGeminiKey();
     }
 
     function hideImageUI() {
@@ -871,6 +943,7 @@
       selBox.style.display = "none";
       selState = null;
       ocrSelBtn.disabled = true;
+      geminiBtn.disabled = true;
       originalCanvas = null;
       resetFilters();
     }
@@ -1484,6 +1557,8 @@
       }
       sessionStorage.setItem("dg_token", token);
       sessionStorage.setItem("dg_username", username);
+      const geminiKeyInput = document.getElementById("inputGemini").value.trim();
+      if (geminiKeyInput) sessionStorage.setItem("gemini_key", geminiKeyInput);
       loginOverlay.classList.add("hidden");
       setStatus("Inloggad. Tryck Starta kamera nar du vill skanna.");
       updateCameraControlState();
