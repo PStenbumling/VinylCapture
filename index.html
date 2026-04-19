@@ -736,6 +736,27 @@
       return blob;
     }
 
+    function extractMatrixPattern(raw) {
+      const text = raw.toUpperCase().replace(/[^A-Z0-9\-\. ]/g, " ").replace(/\s+/g, " ").trim();
+
+      const patterns = [
+        /\b[A-Z]{1,5}\s\d{4,6}[-–]\d{1,2}\b/,   // S 66260-1
+        /\b[A-Z]{1,5}\d{4,6}[-–]\d{1,2}\b/,      // S66260-1
+        /\b\d{4,6}[-–]\d{1,2}\b/,                 // 66260-1
+        /\b[A-Z]{1,5}\s\d{4,6}\s[A-Z]\d?\b/,     // S 66260 A1
+        /\b\d{4,6}\s[A-Z]\d?\b/,                  // 66260 A1
+        /\b[A-Z]{1,5}\s\d{4,6}\b/,                // S 66260
+        /\b[A-Z]{1,5}\d{4,6}\b/,                  // S66260
+        /\b\d{5,6}\b/,                             // 66260 (last resort)
+      ];
+
+      for (const p of patterns) {
+        const m = text.match(p);
+        if (m) return m[0].trim();
+      }
+      return "";
+    }
+
     function getMatrixMode() {
       return document.getElementById("matrixModeCheck").checked;
     }
@@ -949,15 +970,15 @@
     document.getElementById("matrixPresetBtn").addEventListener("click", () => {
       document.getElementById("filterGrayscale").checked         = true;
       document.getElementById("filterInvert").checked            = true;
-      document.getElementById("filterBrightness").value          = "85";
-      document.getElementById("filterContrast").value            = "180";
-      document.getElementById("filterSharpen").value             = "65";
-      document.getElementById("filterBlur").value                = "1";
+      document.getElementById("filterBrightness").value          = "100";
+      document.getElementById("filterContrast").value            = "100";
+      document.getElementById("filterSharpen").value             = "100";
+      document.getElementById("filterBlur").value                = "0";
       document.getElementById("filterRotation").value            = "0";
-      document.getElementById("filterBrightnessVal").textContent = "85%";
-      document.getElementById("filterContrastVal").textContent   = "180%";
-      document.getElementById("filterSharpenVal").textContent    = "65%";
-      document.getElementById("filterBlurVal").textContent       = "1px";
+      document.getElementById("filterBrightnessVal").textContent = "100%";
+      document.getElementById("filterContrastVal").textContent   = "100%";
+      document.getElementById("filterSharpenVal").textContent    = "100%";
+      document.getElementById("filterBlurVal").textContent       = "0px";
       document.getElementById("filterRotationVal").textContent   = "0°";
       scheduleApplyFilters();
     });
@@ -1094,11 +1115,13 @@
 
       const text = (await runOCR(ocrBlob, matrixMode)).trim();
       if (matrixMode) {
-        manualMatrixEl.value = text || "";
+        const extracted = extractMatrixPattern(text);
+        manualMatrixEl.value = extracted;
+        setStatus(extracted ? "Matrix OCR: " + extracted : "Inget matrix-mönster hittades — fyll i manuellt.", extracted ? "success" : "");
       } else {
         ocrTextEl.value = text || "";
+        setStatus("OCR på markering klar.", "");
       }
-      setStatus(matrixMode ? "Matrix OCR på markering klar." : "OCR på markering klar.", "");
       ocrSelBtn.disabled = false;
     });
 
@@ -1408,12 +1431,14 @@
         const text = (await runOCR(imageBlob, matrixMode)).trim();
 
         if (matrixMode) {
-          manualMatrixEl.value = text || "";
+          const extracted = extractMatrixPattern(text);
+          manualMatrixEl.value = extracted;
+          setStatus(extracted ? "Matrix OCR: " + extracted : "Inget matrix-mönster hittades — fyll i manuellt.", extracted ? "success" : "");
         } else {
           ocrTextEl.value = text || "";
+          setStatus("OCR klar. Redigera texten om det behovs, tryck sedan Sok i Discogs.", "");
         }
         searchBtn.disabled = false;
-        setStatus(matrixMode ? "Matrix OCR klar. Kontrollera matrix-fältet." : "OCR klar. Redigera texten om det behovs, tryck sedan Sok i Discogs.", "");
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Fel vid OCR.", "error");
@@ -1532,11 +1557,13 @@
         const text = (await runOCR(ocrBlob, matrixMode)).trim();
 
         if (matrixMode) {
-          manualMatrixEl.value = text || "";
+          const extracted = extractMatrixPattern(text);
+          manualMatrixEl.value = extracted;
+          setStatus(extracted ? "Matrix OCR: " + extracted : "Inget matrix-mönster hittades — fyll i manuellt.", extracted ? "success" : "");
         } else {
           ocrTextEl.value = text || "";
+          setStatus("OCR klar. Markera ett område för att köra om OCR på en del.", "");
         }
-        setStatus(matrixMode ? "Matrix OCR klar. Kontrollera matrix-fältet." : "OCR klar. Markera ett område för att köra om OCR på en del.", "");
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Fel vid bildladdning.", "error");
